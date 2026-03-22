@@ -1,0 +1,22 @@
+services:
+  db:
+    #image: postgis/postgis:17-3.5
+    #build from code
+    build:
+      context: ./backend/infrastructure/database
+    container_name: chiro
+    restart: unless-stopped # Always restart if it fails
+    env_file:
+      - .env
+    ports:
+      # Expose the internal port 5432 to the host machine's port 5434
+      - "5435:5432"
+    volumes:
+      # Use a named volume for data persistence
+      # The data will be stored on your host machine and won't be lost if the container is removed
+      - chiro_data:/var/lib/postgresql/data
+
+# Define the named volume
+volumes:
+  chiro_data:
+    driver: local

@@ -1,0 +1,18 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* Prevent body scroll, let Vuetify/Leaflet handle scrolling and dragging */
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Fix for Leaflet tile visibility when using Vuetify reset */
+.leaflet-container {
+  z-index: 1;
+}
