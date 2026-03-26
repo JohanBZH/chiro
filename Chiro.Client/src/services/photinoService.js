@@ -1,70 +1,68 @@
 /**
  * Service to handle communication with the Photino .NET backend.
+ *
+ * Modified to bypass Linux WebKitGTK Photino native injection bugs:
+ *   JS → C#:  window.external.sendMessage(string)  [Still works natively]
+ *   C# → JS:  HTTP Long-polling to http://127.0.0.1:5174/api/poll [New robust IPC bridge]
  */
-
-// A simple dictionary to keep track of callbacks if we want request/response pattern
-const pendingRequests = new Map();
 
 /**
- * Initializes the message listener from the Photino back-end.
+ * Initializes the listener for messages coming FROM the C# backend.
+ * (Now a no-op as we use fetch instead of event listeners).
  */
 export function initPhotinoListener() {
-  window.addEventListener("message", (event) => {
-    try {
-      // Photino sends messages as a string, usually we want to parse it if it's JSON
-      const data = JSON.parse(event.data);
-      console.log("Received message from Photino backend:", data);
-
-      // Basic handling of request/response
-      if (data && data.requestId && pendingRequests.has(data.requestId)) {
-        pendingRequests.get(data.requestId)(data);
-        pendingRequests.delete(data.requestId);
-      }
-    } catch (e) {
-      console.error("Failed to parse message from Photino:", event.data, e);
-    }
-  });
+  console.log("[Photino] Initialized HTTP IPC bridge (bypassing native receiveMessage)");
 }
 
 /**
- * Sends a payload to the Photino .NET host window.
- * @param {string} action The action or command for the backend.
- * @param {any} payload Any data payload to accompany the action.
- * @returns {Promise<any>} A promise that resolves when the C# backend responds (optional).
+ * Sends a message to the Photino .NET backend and waits for the response via local HTTP.
+ * @param {string} action - The action name for the backend handler.
+ * @param {object} payload - Data to send alongside the action.
+ * @param {number} timeoutMs - Max wait time before rejecting (default 120s).
+ * @returns {Promise<object>} Resolves with the backend response.
  */
-export function sendMessageToBackend(action, payload) {
-  return new Promise((resolve, reject) => {
-    try {
-      const requestId = crypto.randomUUID();
+export async function sendMessageToBackend(action, payload, timeoutMs = 120000) {
+  try {
+    const requestId = crypto.randomUUID();
 
-      // Store the callback
-      pendingRequests.set(requestId, resolve);
+    const message = JSON.stringify({
+      action: action,
+      requestId: requestId,
+      data: payload || {},
+    });
 
-      const message = {
-        action: action,
-        requestId: requestId,
-        data: payload || {},
+    // 1. Trigger the C# backend action
+    if (window.external && typeof window.external.sendMessage === "function") {
+      console.log(`[IPC] Sending '${action}' via window.external.sendMessage`);
+      window.external.sendMessage(message);
+    } else {
+      console.warn("[IPC] sendMessage not available — mock mode");
+      return {
+        status: "error",
+        message: "Photino bridge not available — are you running inside Photino?",
+        requestId,
       };
-
-      // Photino environment exposes window.external.receiveMessage
-      if (window.external && window.external.receiveMessage) {
-        window.external.receiveMessage(JSON.stringify(message));
-      } else {
-        console.warn(
-          "Photino window.external.receiveMessage is not available. Running in standard browser?",
-        );
-        // Simulate a quick mock response if running in a normal browser for development
-        setTimeout(() => {
-          resolve({
-            status: "Mock mode: Backend not attached",
-            data: null,
-            requestId,
-          });
-          pendingRequests.delete(requestId);
-        }, 500);
-      }
-    } catch (error) {
-      reject(error);
     }
-  });
+
+    // 2. Poll the C# local HTTP server for the result (Blocking GET)
+    console.log(`[IPC] Polling for result of '${action}' (requestId: ${requestId})...`);
+    
+    // The C# server long-polls for up to 120s internally before returning 408 Timeout.
+    const response = await fetch(`http://127.0.0.1:5174/api/poll?requestId=${requestId}`);
+    
+    if (response.status === 408) {
+        throw new Error(`[IPC] Task '${action}' timed out waiting for backend.`);
+    }
+    if (!response.ok) {
+        throw new Error(`[IPC] Server error ${response.status} when polling for '${action}'`);
+    }
+
+    const data = await response.json();
+    console.log(`[IPC] Received result for '${action}':`, data);
+    return data;
+
+  } catch (error) {
+    console.error(`[IPC] Error communicating with backend for '${action}':`, error);
+    throw error;
+  }
 }

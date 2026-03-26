@@ -3,13 +3,14 @@ import { ref } from "vue";
 import { LMap, LTileLayer } from "@vue-leaflet/vue-leaflet";
 import { sendMessageToBackend } from "../services/photinoService";
 
-// Perimeter Input
-const perimeterFile = ref(null);
+// Selected file path (absolute, from native dialog)
+const selectedFilePath = ref(null);
+const selectedFileName = ref(null);
 
 // Search Radius (Intervals: 5, 10, 15, 20)
 const searchRadius = ref(20);
 
-// Data Table Setup (Placeholder for project 1 outputs)
+// Data Table Setup
 const headers = ref([
   { title: "Type de Zone", key: "type", align: "start" },
   { title: "Code ZNIEFF/N2000", key: "code" },
@@ -19,26 +20,81 @@ const headers = ref([
 ]);
 const results = ref([]);
 const loading = ref(false);
+const picking = ref(false);
+const errorMessage = ref(null);
 
 // Map Setup
 const zoom = ref(6);
 const center = ref([46.2276, 2.2137]); // Centered on France
 
-// Handle Submission
+// Open the native OS file dialog via the C# backend
+const pickFile = async () => {
+  picking.value = true;
+  errorMessage.value = null;
+
+  try {
+    const response = await sendMessageToBackend("pickFile", {});
+    console.log("pickFile response:", response);
+
+    if (response.status === "success" && response.data) {
+      selectedFilePath.value = response.data.filePath;
+      // Extract just the filename for display
+      const parts = response.data.filePath.split("/");
+      selectedFileName.value = parts[parts.length - 1];
+    } else if (response.status === "cancelled") {
+      // User cancelled — do nothing
+    } else {
+      errorMessage.value = response.message || "Erreur lors de la sélection du fichier.";
+    }
+  } catch (error) {
+    console.error("Error picking file:", error);
+    errorMessage.value = "Erreur de communication avec le backend.";
+  } finally {
+    picking.value = false;
+  }
+};
+
+// Clear selected file
+const clearFile = () => {
+  selectedFilePath.value = null;
+  selectedFileName.value = null;
+  results.value = [];
+};
+
+// Handle Submission — send the absolute file path to the backend
 const handleSubmit = async () => {
+  if (!selectedFilePath.value) {
+    errorMessage.value = "Veuillez sélectionner un fichier de périmètre.";
+    return;
+  }
+
   loading.value = true;
+  errorMessage.value = null;
 
   try {
     const payload = {
-      radius: searchRadius.value,
-      filename: perimeterFile.value ? perimeterFile.value.name : null,
+      filePath: selectedFilePath.value,
+      radiusKm: searchRadius.value,
     };
 
-    // Call the Photino backend (C#)
-    const response = await sendMessageToBackend("ProcessPerimeter", payload);
+    console.log("Sending processPerimeter to backend:", payload);
+    const response = await sendMessageToBackend("processPerimeter", payload, 120000);
     console.log("Received from backend:", response);
+
+    if (response.status === "success" && response.data) {
+      results.value = response.data.map((zone) => ({
+        type: zone.type,
+        code: zone.code,
+        name: zone.name,
+        distance: (zone.distanceMeters / 1000).toFixed(2),
+        orientation: zone.isInside ? "Dans le périmètre" : "—",
+      }));
+    } else {
+      errorMessage.value = response.message || "Erreur inconnue du backend.";
+    }
   } catch (error) {
     console.error("Error contacting backend:", error);
+    errorMessage.value = "Erreur de communication avec le backend.";
   } finally {
     loading.value = false;
   }
@@ -70,18 +126,42 @@ const onMapReady = (mapObject) => {
 
         <div class="pa-4 flex-grow-1 overflow-y-auto">
           <v-form @submit.prevent="handleSubmit">
-            <!-- Perimeter Upload -->
-            <v-file-input
-              v-model="perimeterFile"
-              label="Périmètre d'étude (.shp, .csv)"
-              accept=".shp,.csv,.kml,.gpx"
-              prepend-icon="mdi-map-marker-path"
-              variant="outlined"
-              color="primary"
-              hint="Importez votre zone d'étude"
-              persistent-hint
-              class="mb-6"
-            ></v-file-input>
+            <!-- Native File Picker -->
+            <div class="mb-6">
+              <v-text-field
+                :model-value="selectedFileName || ''"
+                label="Périmètre d'étude (.shp, .gpkg)"
+                prepend-icon="mdi-map-marker-path"
+                variant="outlined"
+                color="primary"
+                hint="Cliquez sur 'Parcourir' pour sélectionner votre fichier"
+                persistent-hint
+                readonly
+                @click="pickFile"
+              >
+                <template v-slot:append>
+                  <v-btn
+                    v-if="selectedFilePath"
+                    icon="mdi-close"
+                    size="small"
+                    variant="text"
+                    @click.stop="clearFile"
+                  ></v-btn>
+                </template>
+              </v-text-field>
+
+              <v-btn
+                color="secondary"
+                variant="tonal"
+                block
+                class="mt-2"
+                prepend-icon="mdi-folder-open"
+                :loading="picking"
+                @click="pickFile"
+              >
+                Parcourir...
+              </v-btn>
+            </div>
 
             <!-- Search Radius Slider -->
             <div class="mb-6">
@@ -113,9 +193,22 @@ const onMapReady = (mapObject) => {
               elevation="2"
               prepend-icon="mdi-magnify"
               :loading="loading"
+              :disabled="!selectedFilePath"
             >
               Visualiser / Analyser
             </v-btn>
+
+            <!-- Error Display -->
+            <v-alert
+              v-if="errorMessage"
+              type="error"
+              variant="tonal"
+              closable
+              class="mt-4"
+              @click:close="errorMessage = null"
+            >
+              {{ errorMessage }}
+            </v-alert>
           </v-form>
         </div>
       </v-col>

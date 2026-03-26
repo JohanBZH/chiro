@@ -2,6 +2,10 @@ import { createApp } from "vue";
 import "./style.css";
 import App from "./App.vue";
 import router from "./router";
+import { initPhotinoListener } from "./services/photinoService";
+
+// Start listening for Photino backend responses immediately
+initPhotinoListener();
 
 // Vuetify
 import "vuetify/styles";

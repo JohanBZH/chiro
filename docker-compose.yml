@@ -3,7 +3,7 @@ services:
     #image: postgis/postgis:17-3.5
     #build from code
     build:
-      context: ./backend/infrastructure/database
+      context: ./Chiro.App/Infrastructure/database
     container_name: chiro
     restart: unless-stopped # Always restart if it fails
     env_file:
