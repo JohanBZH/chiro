@@ -430,15 +430,22 @@ const onMapReady = (mapObject) => {
 
             <!-- New Exterior Legend -->
             <div class="mt-4 pt-2 border-t">
-              <div class="text-caption font-weight-bold text-grey-darken-1 mb-2">LÉGENDE ANALYSES</div>
-              <div class="d-flex flex-wrap gap-2">
-                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border" style="flex: 1 1 auto; min-width: 130px;">
-                  <div style="width: 12px; height: 12px; background-color: rgba(255, 224, 178, 0.4); border: 1.5px solid #f44336; margin-right: 8px;"></div>
+              <div class="text-caption font-weight-bold text-grey-darken-1 mb-2">LÉGENDE CARTOGRAPHIQUE</div>
+              <div class="d-flex flex-column gap-1">
+                <!-- Perimeter -->
+                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
+                  <div style="width: 14px; height: 14px; background-color: rgba(255, 224, 178, 0.4); border: 2px solid #f44336; margin-right: 12px;"></div>
                   <span class="text-caption font-weight-medium">Périmètre d'Étude</span>
                 </div>
-                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border" style="flex: 1 1 auto; min-width: 130px;">
-                  <div style="width: 12px; height: 12px; background-color: rgba(179, 229, 252, 0.6); border: 1.5px dashed #ff9800; margin-right: 8px;"></div>
-                  <span class="text-caption font-weight-medium">Intersects (Zones)</span>
+                <!-- Inside -->
+                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
+                  <div style="width: 14px; height: 14px; background-color: rgba(179, 229, 252, 0.6); border: 2px dashed #ff9800; margin-right: 12px;"></div>
+                  <span class="text-caption font-weight-medium">Zones dans le périmètre</span>
+                </div>
+                <!-- Proximity -->
+                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
+                  <div style="width: 14px; height: 14px; background-color: rgba(200, 230, 201, 0.5); border: 2px dashed #4caf50; margin-right: 12px;"></div>
+                  <span class="text-caption font-weight-medium">Zones à proximité ({{ searchRadius }} km)</span>
                 </div>
               </div>
             </div>
