@@ -51,7 +51,7 @@ const selectedFileName = ref(null);
 // Search Radius (Intervals: 5, 10, 15, 20)
 const searchRadius = ref(20);
 
-// Data Table Setup
+// Data Table Setup (Zones)
 const headers = ref([
   { title: "Type de Zone", key: "type", align: "start" },
   { title: "Code ZNIEFF/N2000", key: "code" },
@@ -60,6 +60,19 @@ const headers = ref([
   { title: "Orientation", key: "orientation" },
 ]);
 const results = ref([]);
+
+// Data Table Setup (Species)
+const activeTab = ref("zones");
+const speciesSearch = ref("");
+const speciesResults = ref([]);
+const speciesHeaders = ref([
+  { title: "Nom Scientifique", key: "scientificName", align: "start" },
+  { title: "Nom Vernaculaire", key: "vernacularName" },
+  { title: "Groupe", key: "group" },
+  { title: "Statuts", key: "statusSummary" },
+  { title: "Zones", key: "zonesLabel" },
+  { title: "Score Enjeu", key: "endangermentScore", align: "end" },
+]);
 const loading = ref(false);
 const picking = ref(false);
 const errorMessage = ref(null);
@@ -172,6 +185,7 @@ const clearFile = () => {
   selectedFilePath.value = null;
   selectedFileName.value = null;
   results.value = [];
+  speciesResults.value = [];
   perimeterGeoJson.value = null;
   zonesGeoJson.value = [];
 };
@@ -215,6 +229,33 @@ const handleSubmit = async () => {
           distance: (zone.distanceMeters / 1000).toFixed(2),
           orientation: zone.isInside ? "Dans le périmètre" : "—",
         }));
+      }
+
+      if (response.data.species) {
+        speciesResults.value = response.data.species.map(s => {
+          // Identify the highest Red List status for scoring
+          let maxScore = 0;
+          
+          s.statuses.forEach(st => {
+            const code = st.code.toUpperCase();
+            if (code.includes("CR")) maxScore = Math.max(maxScore, 5);
+            else if (code.includes("EN")) maxScore = Math.max(maxScore, 4);
+            else if (code.includes("VU")) maxScore = Math.max(maxScore, 3);
+            else if (code.includes("NT")) maxScore = Math.max(maxScore, 2);
+            else if (code.includes("LC") || code.includes("LR/LC")) maxScore = Math.max(maxScore, 1);
+          });
+
+          if (maxScore === 0 && s.isDeterminant) maxScore = 1.5;
+
+          return {
+            scientificName: s.scientificName,
+            vernacularName: s.vernacularName || "—",
+            group: s.group1Inpn || s.group2Inpn || "Inconnu",
+            statusSummary: s.statuses.map(st => st.code).join(", ") || "—",
+            zonesLabel: s.zones.map(z => z.zoneName).join(", "),
+            endangermentScore: maxScore
+          };
+        });
       }
 
       // Snap map camera to the uploaded perimeter
@@ -441,17 +482,16 @@ const onMapReady = (mapObject) => {
 
         <!-- Output Data Table Area -->
         <div
-          class="data-table-container flex-grow-1 pb-4"
-          style="overflow-y: auto"
+          class="data-table-container flex-grow-1 d-flex flex-column"
+          style="overflow-y: hidden"
         >
-          <v-card variant="flat" class="rounded-0">
-            <v-card-title
-              class="bg-surface text-primary pt-4 pb-2 text-subtitle-1 font-weight-bold"
-            >
-              <v-icon start icon="mdi-table" class="mr-2"></v-icon>
-              Aperçu des Résultats (Zonages)
-            </v-card-title>
-            <v-card-text class="pa-0">
+          <v-tabs v-model="activeTab" color="primary" density="compact">
+            <v-tab value="zones" prepend-icon="mdi-map-marker-radius">Zonages ({{ results.length }})</v-tab>
+            <v-tab value="species" prepend-icon="mdi-bug">Espèces ({{ speciesResults.length }})</v-tab>
+          </v-tabs>
+
+          <v-window v-model="activeTab" class="flex-grow-1 overflow-y-auto">
+            <v-window-item value="zones" class="fill-height">
               <v-data-table
                 :headers="headers"
                 :items="results"
@@ -467,8 +507,48 @@ const onMapReady = (mapObject) => {
                   </div>
                 </template>
               </v-data-table>
-            </v-card-text>
-          </v-card>
+            </v-window-item>
+
+            <v-window-item value="species" class="fill-height">
+              <div class="d-flex flex-column fill-height">
+                <v-text-field
+                  v-model="speciesSearch"
+                  placeholder="Filtrer les espèces (nom, zone, statut...)"
+                  prepend-inner-icon="mdi-magnify"
+                  variant="solo"
+                  density="compact"
+                  class="ma-2 flex-grow-0"
+                  clearable
+                  hide-details
+                ></v-text-field>
+                <v-data-table
+                  :headers="speciesHeaders"
+                  :items="speciesResults"
+                  :search="speciesSearch"
+                  :loading="loading"
+                  density="compact"
+                  hover
+                  :sort-by="[{ key: 'endangermentScore', order: 'desc' }]"
+                  class="flex-grow-1"
+                >
+                  <template v-slot:item.endangermentScore="{ value }">
+                    <v-chip
+                      :color="value >= 4 ? 'error' : value >= 3 ? 'warning' : 'primary'"
+                      size="x-small"
+                      variant="flat"
+                    >
+                      {{ value }}
+                    </v-chip>
+                  </template>
+                  <template v-slot:no-data>
+                    <div class="pa-4 text-center text-medium-emphasis">
+                      Recherchez les espèces du périmètre en lançant l'analyse.
+                    </div>
+                  </template>
+                </v-data-table>
+              </div>
+            </v-window-item>
+          </v-window>
         </div>
       </div>
     </div>

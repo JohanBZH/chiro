@@ -301,13 +301,18 @@ class Program
 
         Console.WriteLine($"[ProcessPerimeter] Found {zones.Count} zones within {radiusKm}km");
 
+        var insideZoneIds = zones.Where(z => z.IsInside).Select(z => z.Id).ToList();
+        var species = queryService.GetSpeciesForZones(insideZoneIds);
+        Console.WriteLine($"[ProcessPerimeter] Found {species.Count} species in {insideZoneIds.Count} inside zones");
+
         var geoJsonWriter = new NetTopologySuite.IO.GeoJsonWriter();
         var perimeterGeoJson = geoJsonWriter.Write(projectGeometry);
 
         var resultPayload = new
         {
             perimeter = perimeterGeoJson,
-            zones = zones
+            zones = zones,
+            species = species
         };
 
         SafeSendWebMessage(window, new { status = "success", action = "processPerimeter", data = resultPayload, requestId }, options);
