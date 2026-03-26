@@ -88,10 +88,8 @@ const zonesGeoJson = ref([]);
 // -------------------------------------------------------------
 // Layout Resizing State & Methods
 // -------------------------------------------------------------
-const sidebarWidth = ref(300);
-const mapHeight = ref(40); // 40vh initially
+const sidebarWidth = ref(400); // Default to a bit wider for map in drawer
 const isDraggingSidebar = ref(false);
-const isDraggingMap = ref(false);
 
 const startDragSidebar = () => {
   isDraggingSidebar.value = true;
@@ -99,21 +97,14 @@ const startDragSidebar = () => {
   document.body.style.userSelect = "none";
 };
 
-const startDragMap = () => {
-  isDraggingMap.value = true;
-  document.body.style.cursor = "row-resize";
-  document.body.style.userSelect = "none";
-};
-
 const stopDrag = () => {
   // If we just finished dragging, force Leaflet to recalculate its canvas size
-  if (isDraggingSidebar.value || isDraggingMap.value) {
+  if (isDraggingSidebar.value) {
     if (mapInstance) {
       setTimeout(() => mapInstance.invalidateSize(), 50);
     }
   }
   isDraggingSidebar.value = false;
-  isDraggingMap.value = false;
   document.body.style.cursor = "default";
   document.body.style.userSelect = "auto";
 };
@@ -122,14 +113,8 @@ const onDrag = (e) => {
   if (isDraggingSidebar.value) {
     // Determine new width based on mouse clientX with basic bounds
     const newWidth = e.clientX;
-    if (newWidth > 200 && newWidth < window.innerWidth * 0.6) {
+    if (newWidth > 300 && newWidth < window.innerWidth * 0.7) {
       sidebarWidth.value = newWidth;
-    }
-  } else if (isDraggingMap.value) {
-    // Determine new height in vh based on mouse clientY
-    const newHeightVh = (e.clientY / window.innerHeight) * 100;
-    if (newHeightVh >= 5 && newHeightVh < 90) {
-      mapHeight.value = newHeightVh;
     }
   }
 };
@@ -388,6 +373,76 @@ const onMapReady = (mapObject) => {
               {{ errorMessage }}
             </v-alert>
           </v-form>
+
+          <!-- Drawer Map Preview -->
+          <v-divider class="mb-4"></v-divider>
+          <div class="px-4 pb-4">
+            <h3 class="text-subtitle-1 font-weight-bold text-primary mb-3">
+              <v-icon start icon="mdi-map-marker-radius-outline"></v-icon>
+              Visualisation cartographique
+            </h3>
+            <div
+              class="map-wrapper rounded-lg overflow-hidden elevation-3"
+              style="height: 350px; position: relative"
+            >
+              <l-map
+                ref="map"
+                v-model:zoom="zoom"
+                :center="center"
+                :use-global-leaflet="false"
+                @ready="onMapReady"
+              >
+                <l-tile-layer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  layer-type="base"
+                  name="OpenStreetMap"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                ></l-tile-layer>
+
+                <!-- Ecological zones matching the spatial filter -->
+                <l-geo-json
+                  v-for="zone in zonesGeoJson"
+                  :key="zone.id"
+                  :geojson="zone.geojson"
+                  :optionsStyle="() => ({
+                    color: zone.isInside ? '#FF9800' : '#4CAF50',
+                    weight: 2,
+                    dashArray: '5, 5',
+                    opacity: 0.8,
+                    fillColor: zone.isInside ? '#B3E5FC' : '#C8E6C9',
+                    fillOpacity: zone.isInside ? 0.6 : 0.5
+                  })"
+                ></l-geo-json>
+
+                <!-- Main study perimeter overlay -->
+                <l-geo-json
+                  v-if="perimeterGeoJson"
+                  :geojson="perimeterGeoJson"
+                  :optionsStyle="() => ({
+                    color: '#F44336',
+                    weight: 3,
+                    fillColor: '#FFE0B2',
+                    fillOpacity: 0.4
+                  })"
+                ></l-geo-json>
+              </l-map>
+            </div>
+
+            <!-- New Exterior Legend -->
+            <div class="mt-4 pt-2 border-t">
+              <div class="text-caption font-weight-bold text-grey-darken-1 mb-2">LÉGENDE ANALYSES</div>
+              <div class="d-flex flex-wrap gap-2">
+                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border" style="flex: 1 1 auto; min-width: 130px;">
+                  <div style="width: 12px; height: 12px; background-color: rgba(255, 224, 178, 0.4); border: 1.5px solid #f44336; margin-right: 8px;"></div>
+                  <span class="text-caption font-weight-medium">Périmètre d'Étude</span>
+                </div>
+                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border" style="flex: 1 1 auto; min-width: 130px;">
+                  <div style="width: 12px; height: 12px; background-color: rgba(179, 229, 252, 0.6); border: 1.5px dashed #ff9800; margin-right: 8px;"></div>
+                  <span class="text-caption font-weight-medium">Intersects (Zones)</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -398,101 +453,31 @@ const onMapReady = (mapObject) => {
         title="Redimensionner le panneau"
       ></div>
 
-      <!-- Main Area: Map and Data Table -->
-      <div class="d-flex flex-column flex-grow-1" style="min-width: 0;">
-        <!-- Cartography Preview Area -->
-        <div
-          class="map-wrapper"
-          :style="{ height: `${mapHeight}vh`, flexShrink: 0, position: 'relative', zIndex: 1 }"
-        >
-          <l-map
-            ref="map"
-            v-model:zoom="zoom"
-            :center="center"
-            :use-global-leaflet="false"
-            @ready="onMapReady"
-          >
-            <l-tile-layer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              layer-type="base"
-              name="OpenStreetMap"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            ></l-tile-layer>
-
-            <!-- Ecological zones matching the spatial filter -->
-            <l-geo-json
-              v-for="zone in zonesGeoJson"
-              :key="zone.id"
-              :geojson="zone.geojson"
-              :optionsStyle="() => ({
-                color: zone.isInside ? '#FF9800' : '#4CAF50',
-                weight: 2,
-                dashArray: '5, 5',
-                opacity: 0.8,
-                fillColor: zone.isInside ? '#B3E5FC' : '#C8E6C9',
-                fillOpacity: zone.isInside ? 0.6 : 0.5
-              })"
-            ></l-geo-json>
-
-            <!-- Main study perimeter overlay -->
-            <l-geo-json
-              v-if="perimeterGeoJson"
-              :geojson="perimeterGeoJson"
-              :optionsStyle="() => ({
-                color: '#F44336',
-                weight: 3,
-                fillColor: '#FFE0B2',
-                fillOpacity: 0.4
-              })"
-            ></l-geo-json>
-
-            <!-- Map Legend -->
-            <l-control position="bottomleft">
-              <v-card class="pa-3 elevation-3 rounded-lg" border="primary md" style="min-width: 220px; background-color: rgba(255, 255, 255, 0.95);">
-                <div class="font-weight-bold mb-3 text-subtitle-2 text-primary d-flex align-center">
-                  <v-icon size="small" start>mdi-map-legend</v-icon>
-                  Légende
-                </div>
-                <!-- Perimeter -->
-                <div class="d-flex align-center mb-2">
-                  <div style="width: 16px; height: 16px; background-color: rgba(255, 224, 178, 0.4); border: 2px solid #F44336; margin-right: 14px; margin-left: 2px;"></div>
-                  <span class="text-caption">Périmètre d'Étude</span>
-                </div>
-                <!-- Inside zones -->
-                <div class="d-flex align-center mb-2">
-                  <div style="width: 16px; height: 16px; background-color: rgba(179, 229, 252, 0.6); border: 2px dashed #FF9800; margin-right: 14px; margin-left: 2px;"></div>
-                  <span class="text-caption">Dans le périmètre</span>
-                </div>
-                <!-- Outside zones -->
-                <div class="d-flex align-center">
-                  <div style="width: 16px; height: 16px; background-color: rgba(200, 230, 201, 0.5); border: 2px dashed #4CAF50; margin-right: 14px; margin-left: 2px;"></div>
-                  <span class="text-caption">À proximité ({{ searchRadius }} km)</span>
-                </div>
-              </v-card>
-            </l-control>
-          </l-map>
-        </div>
-
-        <!-- Horizontal Resizer -->
-        <div
-          class="resizer-horizontal"
-          @mousedown="startDragMap"
-          title="Redimensionner la carte"
-        ></div>
-
+      <!-- Main Area: Results Tables (Full Height Constrained) -->
+      <div class="d-flex flex-column flex-grow-1" style="min-width: 0; height: 100vh; overflow: hidden">
         <!-- Output Data Table Area -->
         <div
           class="data-table-container flex-grow-1 d-flex flex-column"
-          style="min-height: 0; overflow: hidden;"
         >
-          <v-tabs v-model="activeTab" color="primary" density="compact">
-            <v-tab value="zones" prepend-icon="mdi-map-marker-radius">Zonages ({{ results.length }})</v-tab>
-            <v-tab value="species" prepend-icon="mdi-bug">Espèces ({{ speciesResults.length }})</v-tab>
-          </v-tabs>
+          <!-- Header Area: Fixed height tabs -->
+          <div class="flex-shrink-0 bg-grey-lighten-4 border-b">
+            <v-tabs v-model="activeTab" color="primary" density="compact">
+              <v-tab value="zones" prepend-icon="mdi-map-marker-radius">Zonages ({{ results.length }})</v-tab>
+              <v-tab value="species" prepend-icon="mdi-bug">Espèces ({{ speciesResults.length }})</v-tab>
+            </v-tabs>
+          </div>
 
-          <v-window v-model="activeTab" class="flex-grow-1" style="min-height: 0;">
-            <v-window-item value="zones" class="fill-height">
+          <!-- Tab Content Area using direct Flexbox Containers instead of v-window for better scroll control -->
+          <div class="flex-grow-1 d-flex flex-column bg-white" style="min-height: 0">
+            <!-- Tab 1: Zonages -->
+            <div 
+              v-if="activeTab === 'zones'"
+              class="flex-grow-1 d-flex flex-column"
+              style="min-height: 0"
+            >
               <v-data-table
+                id="zones-table"
+                key="zones-results"
                 :headers="headers"
                 :items="results"
                 :loading="loading"
@@ -501,6 +486,8 @@ const onMapReady = (mapObject) => {
                 hover
                 height="100%"
                 fixed-header
+                hide-default-footer
+                :items-per-page="-1"
                 :row-props="getRowProps"
               >
                 <template v-slot:no-data>
@@ -509,21 +496,29 @@ const onMapReady = (mapObject) => {
                   </div>
                 </template>
               </v-data-table>
-            </v-window-item>
+            </div>
 
-            <v-window-item value="species" class="fill-height">
-              <div class="d-flex flex-column fill-height">
-                <v-text-field
-                  v-model="speciesSearch"
-                  placeholder="Filtrer les espèces (nom, zone, statut...)"
-                  prepend-inner-icon="mdi-magnify"
-                  variant="solo"
-                  density="compact"
-                  class="ma-2 flex-grow-0"
-                  clearable
-                  hide-details
-                ></v-text-field>
+            <!-- Tab 2: Espèces -->
+            <div 
+              v-if="activeTab === 'species'"
+              class="flex-grow-1 d-flex flex-column"
+              style="min-height: 0"
+            >
+              <v-text-field
+                v-model="speciesSearch"
+                placeholder="Filtrer les espèces (nom, zone, statut...)"
+                prepend-inner-icon="mdi-magnify"
+                variant="solo"
+                density="compact"
+                class="ma-2 flex-grow-0"
+                clearable
+                hide-details
+              ></v-text-field>
+              <div class="flex-grow-1" style="min-height: 0">
                 <v-data-table
+                  id="species-table"
+                  ref="speciesTable"
+                  key="species-results"
                   :headers="speciesHeaders"
                   :items="speciesResults"
                   :search="speciesSearch"
@@ -532,8 +527,9 @@ const onMapReady = (mapObject) => {
                   hover
                   height="100%"
                   fixed-header
+                  hide-default-footer
+                  :items-per-page="-1"
                   :sort-by="[{ key: 'endangermentScore', order: 'desc' }]"
-                  class="flex-grow-1"
                 >
                   <template v-slot:item.endangermentScore="{ value }">
                     <v-chip
@@ -551,8 +547,8 @@ const onMapReady = (mapObject) => {
                   </template>
                 </v-data-table>
               </div>
-            </v-window-item>
-          </v-window>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -583,15 +579,6 @@ const onMapReady = (mapObject) => {
 }
 
 .resizer-horizontal {
-  height: 6px;
-  cursor: row-resize;
-  background-color: rgb(var(--v-theme-background));
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  transition: background-color 0.2s;
-  z-index: 3;
-}
-.resizer-horizontal:hover, .resizer-horizontal:active {
-  background-color: rgba(var(--v-theme-primary), 0.3);
+  display: none;
 }
 </style>

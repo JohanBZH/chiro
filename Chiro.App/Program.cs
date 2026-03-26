@@ -62,7 +62,7 @@ class Program
         var window = new PhotinoWindow()
             .SetTitle("Chiro - Ecological Diagnostics")
             .SetUseOsDefaultSize(false)
-            .SetSize(new System.Drawing.Size(1280, 720))
+            .SetSize(new System.Drawing.Size(1920, 1080))
             .Center()
             .RegisterWebMessageReceivedHandler((object? sender, string message) =>
             {
