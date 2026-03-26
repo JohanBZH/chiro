@@ -42,6 +42,8 @@ public class SpatialQueryService
             .OrderBy(x => x.Distance)
             .ToList();
 
+        var geoJsonWriter = new NetTopologySuite.IO.GeoJsonWriter();
+
         return zones.Select(x => new ZoneResult
         {
             Id = x.Zone.Id,
@@ -52,7 +54,8 @@ public class SpatialQueryService
             SurfaceHa = x.Zone.SurfaceHa,
             DistanceMeters = Math.Round(x.Distance, 1),
             // Project is inside the zone if distance is 0 or zone contains the geometry
-            IsInside = x.Distance < 1.0
+            IsInside = x.Distance < 1.0,
+            GeoJson = geoJsonWriter.Write(x.Zone.Geometry)
         }).ToList();
     }
 
@@ -134,6 +137,7 @@ public class ZoneResult
     public double? SurfaceHa { get; set; }
     public double DistanceMeters { get; set; }
     public bool IsInside { get; set; }
+    public string GeoJson { get; set; } = "";
 }
 
 /// <summary>

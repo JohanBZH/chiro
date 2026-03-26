@@ -301,7 +301,16 @@ class Program
 
         Console.WriteLine($"[ProcessPerimeter] Found {zones.Count} zones within {radiusKm}km");
 
-        SafeSendWebMessage(window, new { status = "success", action = "processPerimeter", data = zones, requestId }, options);
+        var geoJsonWriter = new NetTopologySuite.IO.GeoJsonWriter();
+        var perimeterGeoJson = geoJsonWriter.Write(projectGeometry);
+
+        var resultPayload = new
+        {
+            perimeter = perimeterGeoJson,
+            zones = zones
+        };
+
+        SafeSendWebMessage(window, new { status = "success", action = "processPerimeter", data = resultPayload, requestId }, options);
     }
 
     /// <summary>

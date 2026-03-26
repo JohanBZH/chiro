@@ -1,7 +1,48 @@
 <script setup>
-import { ref } from "vue";
-import { LMap, LTileLayer } from "@vue-leaflet/vue-leaflet";
+import { ref, nextTick } from "vue";
+import { LMap, LTileLayer, LGeoJson } from "@vue-leaflet/vue-leaflet";
+import L from "leaflet";
+import proj4 from "proj4";
 import { sendMessageToBackend } from "../services/photinoService";
+
+// Register EPSG:2154 (Lambert 93) definition for projection
+proj4.defs(
+  "EPSG:2154",
+  "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+);
+
+// Helper to recursively reproject GeoJSON coordinates from Lambert93 to displayable WGS84
+const projectToWGS84 = (geojson) => {
+  if (!geojson) return null;
+  const data = JSON.parse(JSON.stringify(geojson)); // Deep clone
+
+  const transformCoords = (coords, type) => {
+    if (type === "Point") {
+      const wgs = proj4("EPSG:2154", "EPSG:4326", [coords[0], coords[1]]);
+      coords[0] = wgs[0];
+      coords[1] = wgs[1];
+    } else if (type === "LineString" || type === "MultiPoint") {
+      for (let i = 0; i < coords.length; i++) {
+        const wgs = proj4("EPSG:2154", "EPSG:4326", [coords[i][0], coords[i][1]]);
+        coords[i][0] = wgs[0];
+        coords[i][1] = wgs[1];
+      }
+    } else if (type === "Polygon" || type === "MultiLineString") {
+      coords.forEach(ring => transformCoords(ring, "LineString"));
+    } else if (type === "MultiPolygon") {
+      coords.forEach(polygon => transformCoords(polygon, "Polygon"));
+    }
+  };
+
+  if (data.type === "Feature") {
+    transformCoords(data.geometry.coordinates, data.geometry.type);
+  } else if (data.type === "FeatureCollection") {
+    data.features.forEach(f => transformCoords(f.geometry.coordinates, f.geometry.type));
+  } else {
+    transformCoords(data.coordinates, data.type);
+  }
+  return data;
+};
 
 // Selected file path (absolute, from native dialog)
 const selectedFilePath = ref(null);
@@ -26,6 +67,18 @@ const errorMessage = ref(null);
 // Map Setup
 const zoom = ref(6);
 const center = ref([46.2276, 2.2137]); // Centered on France
+let mapInstance = null;
+
+const perimeterGeoJson = ref(null);
+const zonesGeoJson = ref([]);
+
+const getRowProps = ({ item }) => {
+  if (item.orientation === "Dans le périmètre") {
+    // Apply bold text and light amber background for rows inside the perimeter
+    return { class: "bg-amber-lighten-4 font-weight-bold" };
+  }
+  return {};
+};
 
 // Open the native OS file dialog via the C# backend
 const pickFile = async () => {
@@ -59,6 +112,8 @@ const clearFile = () => {
   selectedFilePath.value = null;
   selectedFileName.value = null;
   results.value = [];
+  perimeterGeoJson.value = null;
+  zonesGeoJson.value = [];
 };
 
 // Handle Submission — send the absolute file path to the backend
@@ -82,13 +137,35 @@ const handleSubmit = async () => {
     console.log("Received from backend:", response);
 
     if (response.status === "success" && response.data) {
-      results.value = response.data.map((zone) => ({
-        type: zone.type,
-        code: zone.code,
-        name: zone.name,
-        distance: (zone.distanceMeters / 1000).toFixed(2),
-        orientation: zone.isInside ? "Dans le périmètre" : "—",
-      }));
+      if (response.data.perimeter) {
+        perimeterGeoJson.value = projectToWGS84(JSON.parse(response.data.perimeter));
+      }
+
+      if (response.data.zones) {
+        zonesGeoJson.value = response.data.zones.filter(z => z.geoJson).map(z => ({
+          geojson: projectToWGS84(JSON.parse(z.geoJson)),
+          isInside: z.isInside,
+          id: z.id
+        }));
+
+        results.value = response.data.zones.map((zone) => ({
+          type: zone.type,
+          code: zone.code,
+          name: zone.name,
+          distance: (zone.distanceMeters / 1000).toFixed(2),
+          orientation: zone.isInside ? "Dans le périmètre" : "—",
+        }));
+      }
+
+      // Snap map camera to the uploaded perimeter
+      nextTick(() => {
+        if (mapInstance && perimeterGeoJson.value) {
+          const bounds = L.geoJSON(perimeterGeoJson.value).getBounds();
+          if (bounds.isValid()) {
+            mapInstance.fitBounds(bounds, { padding: [20, 20] });
+          }
+        }
+      });
     } else {
       errorMessage.value = response.message || "Erreur inconnue du backend.";
     }
@@ -102,6 +179,7 @@ const handleSubmit = async () => {
 
 // Ensure the Map resizes correctly after Vuetify layout completion
 const onMapReady = (mapObject) => {
+  mapInstance = mapObject;
   setTimeout(() => {
     mapObject.invalidateSize();
   }, 100);
@@ -233,6 +311,32 @@ const onMapReady = (mapObject) => {
               name="OpenStreetMap"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             ></l-tile-layer>
+
+            <!-- Ecological zones matching the spatial filter -->
+            <l-geo-json
+              v-for="zone in zonesGeoJson"
+              :key="zone.id"
+              :geojson="zone.geojson"
+              :optionsStyle="() => ({
+                color: zone.isInside ? '#FF5722' : '#2196F3',
+                weight: 2,
+                opacity: 0.8,
+                fillColor: zone.isInside ? '#FFCCBC' : '#BBDEFB',
+                fillOpacity: zone.isInside ? 0.6 : 0.2
+              })"
+            ></l-geo-json>
+
+            <!-- Main study perimeter overlay -->
+            <l-geo-json
+              v-if="perimeterGeoJson"
+              :geojson="perimeterGeoJson"
+              :optionsStyle="() => ({
+                color: '#D32F2F',
+                weight: 3,
+                dashArray: '5, 10',
+                fillOpacity: 0
+              })"
+            ></l-geo-json>
           </l-map>
         </div>
 
@@ -258,6 +362,7 @@ const onMapReady = (mapObject) => {
                 loading-text="Analyse spatiale en cours..."
                 density="compact"
                 hover
+                :row-props="getRowProps"
               >
                 <template v-slot:no-data>
                   <div class="pa-4 text-center text-medium-emphasis">
