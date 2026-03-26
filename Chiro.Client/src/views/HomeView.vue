@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, nextTick } from "vue";
 import { LMap, LTileLayer, LGeoJson, LControl } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 import proj4 from "proj4";
@@ -71,6 +71,66 @@ let mapInstance = null;
 
 const perimeterGeoJson = ref(null);
 const zonesGeoJson = ref([]);
+
+// -------------------------------------------------------------
+// Layout Resizing State & Methods
+// -------------------------------------------------------------
+const sidebarWidth = ref(300);
+const mapHeight = ref(40); // 40vh initially
+const isDraggingSidebar = ref(false);
+const isDraggingMap = ref(false);
+
+const startDragSidebar = () => {
+  isDraggingSidebar.value = true;
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+};
+
+const startDragMap = () => {
+  isDraggingMap.value = true;
+  document.body.style.cursor = "row-resize";
+  document.body.style.userSelect = "none";
+};
+
+const stopDrag = () => {
+  // If we just finished dragging, force Leaflet to recalculate its canvas size
+  if (isDraggingSidebar.value || isDraggingMap.value) {
+    if (mapInstance) {
+      setTimeout(() => mapInstance.invalidateSize(), 50);
+    }
+  }
+  isDraggingSidebar.value = false;
+  isDraggingMap.value = false;
+  document.body.style.cursor = "default";
+  document.body.style.userSelect = "auto";
+};
+
+const onDrag = (e) => {
+  if (isDraggingSidebar.value) {
+    // Determine new width based on mouse clientX with basic bounds
+    const newWidth = e.clientX;
+    if (newWidth > 200 && newWidth < window.innerWidth * 0.6) {
+      sidebarWidth.value = newWidth;
+    }
+  } else if (isDraggingMap.value) {
+    // Determine new height in vh based on mouse clientY
+    const newHeightVh = (e.clientY / window.innerHeight) * 100;
+    if (newHeightVh >= 5 && newHeightVh < 90) {
+      mapHeight.value = newHeightVh;
+    }
+  }
+};
+
+onMounted(() => {
+  window.addEventListener("mousemove", onDrag);
+  window.addEventListener("mouseup", stopDrag);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("mousemove", onDrag);
+  window.removeEventListener("mouseup", stopDrag);
+});
+// -------------------------------------------------------------
 
 const getRowProps = ({ item }) => {
   if (item.orientation === "Dans le périmètre") {
@@ -188,12 +248,11 @@ const onMapReady = (mapObject) => {
 
 <template>
   <v-container fluid class="fill-height pa-0 ma-0" style="height: 100vh">
-    <v-row no-gutters class="fill-height">
+    <div class="d-flex fill-height" style="width: 100%">
       <!-- Left Sidebar: Controls -->
-      <v-col
-        cols="12"
-        md="3"
+      <div
         class="sidebar-container fill-height d-flex flex-column elevation-4"
+        :style="{ width: `${sidebarWidth}px`, minWidth: '200px', flexShrink: 0 }"
       >
         <div class="pa-4 bg-primary text-white flex-grow-0">
           <h2 class="text-h5 font-weight-bold">Chiro Diagnostics</h2>
@@ -289,14 +348,21 @@ const onMapReady = (mapObject) => {
             </v-alert>
           </v-form>
         </div>
-      </v-col>
+      </div>
+
+      <!-- Vertical Resizer -->
+      <div
+        class="resizer-vertical"
+        @mousedown="startDragSidebar"
+        title="Redimensionner le panneau"
+      ></div>
 
       <!-- Main Area: Map and Data Table -->
-      <v-col cols="12" md="9" class="d-flex flex-column fill-height pb-0 pt-0">
+      <div class="d-flex flex-column flex-grow-1" style="min-width: 0;">
         <!-- Cartography Preview Area -->
         <div
-          class="flex-grow-1"
-          style="min-height: 50vh; position: relative; z-index: 1"
+          class="map-wrapper"
+          :style="{ height: `${mapHeight}vh`, flexShrink: 0, position: 'relative', zIndex: 1 }"
         >
           <l-map
             ref="map"
@@ -366,12 +432,17 @@ const onMapReady = (mapObject) => {
           </l-map>
         </div>
 
-        <v-divider></v-divider>
+        <!-- Horizontal Resizer -->
+        <div
+          class="resizer-horizontal"
+          @mousedown="startDragMap"
+          title="Redimensionner la carte"
+        ></div>
 
         <!-- Output Data Table Area -->
         <div
-          class="data-table-container pb-4"
-          style="height: 35vh; overflow-y: auto"
+          class="data-table-container flex-grow-1 pb-4"
+          style="overflow-y: auto"
         >
           <v-card variant="flat" class="rounded-0">
             <v-card-title
@@ -399,8 +470,8 @@ const onMapReady = (mapObject) => {
             </v-card-text>
           </v-card>
         </div>
-      </v-col>
-    </v-row>
+      </div>
+    </div>
   </v-container>
 </template>
 
@@ -412,5 +483,31 @@ const onMapReady = (mapObject) => {
 
 .data-table-container {
   background-color: rgb(var(--v-theme-background));
+}
+
+.resizer-vertical {
+  width: 6px;
+  cursor: col-resize;
+  background-color: rgb(var(--v-theme-background));
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  transition: background-color 0.2s;
+  z-index: 3;
+}
+.resizer-vertical:hover, .resizer-vertical:active {
+  background-color: rgba(var(--v-theme-primary), 0.3);
+}
+
+.resizer-horizontal {
+  height: 6px;
+  cursor: row-resize;
+  background-color: rgb(var(--v-theme-background));
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  transition: background-color 0.2s;
+  z-index: 3;
+}
+.resizer-horizontal:hover, .resizer-horizontal:active {
+  background-color: rgba(var(--v-theme-primary), 0.3);
 }
 </style>
