@@ -8,7 +8,7 @@ import { sendMessageToBackend } from "../services/photinoService";
 // Register EPSG:2154 (Lambert 93) definition for projection
 proj4.defs(
   "EPSG:2154",
-  "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+  "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
 );
 
 // Helper to recursively reproject GeoJSON coordinates from Lambert93 to displayable WGS84
@@ -23,21 +23,26 @@ const projectToWGS84 = (geojson) => {
       coords[1] = wgs[1];
     } else if (type === "LineString" || type === "MultiPoint") {
       for (let i = 0; i < coords.length; i++) {
-        const wgs = proj4("EPSG:2154", "EPSG:4326", [coords[i][0], coords[i][1]]);
+        const wgs = proj4("EPSG:2154", "EPSG:4326", [
+          coords[i][0],
+          coords[i][1],
+        ]);
         coords[i][0] = wgs[0];
         coords[i][1] = wgs[1];
       }
     } else if (type === "Polygon" || type === "MultiLineString") {
-      coords.forEach(ring => transformCoords(ring, "LineString"));
+      coords.forEach((ring) => transformCoords(ring, "LineString"));
     } else if (type === "MultiPolygon") {
-      coords.forEach(polygon => transformCoords(polygon, "Polygon"));
+      coords.forEach((polygon) => transformCoords(polygon, "Polygon"));
     }
   };
 
   if (data.type === "Feature") {
     transformCoords(data.geometry.coordinates, data.geometry.type);
   } else if (data.type === "FeatureCollection") {
-    data.features.forEach(f => transformCoords(f.geometry.coordinates, f.geometry.type));
+    data.features.forEach((f) =>
+      transformCoords(f.geometry.coordinates, f.geometry.type),
+    );
   } else {
     transformCoords(data.coordinates, data.type);
   }
@@ -155,7 +160,8 @@ const pickFile = async () => {
     } else if (response.status === "cancelled") {
       // User cancelled — do nothing
     } else {
-      errorMessage.value = response.message || "Erreur lors de la sélection du fichier.";
+      errorMessage.value =
+        response.message || "Erreur lors de la sélection du fichier.";
     }
   } catch (error) {
     console.error("Error picking file:", error);
@@ -192,20 +198,28 @@ const handleSubmit = async () => {
     };
 
     console.log("Sending processPerimeter to backend:", payload);
-    const response = await sendMessageToBackend("processPerimeter", payload, 120000);
+    const response = await sendMessageToBackend(
+      "processPerimeter",
+      payload,
+      120000,
+    );
     console.log("Received from backend:", response);
 
     if (response.status === "success" && response.data) {
       if (response.data.perimeter) {
-        perimeterGeoJson.value = projectToWGS84(JSON.parse(response.data.perimeter));
+        perimeterGeoJson.value = projectToWGS84(
+          JSON.parse(response.data.perimeter),
+        );
       }
 
       if (response.data.zones) {
-        zonesGeoJson.value = response.data.zones.filter(z => z.geoJson).map(z => ({
-          geojson: projectToWGS84(JSON.parse(z.geoJson)),
-          isInside: z.isInside,
-          id: z.id
-        }));
+        zonesGeoJson.value = response.data.zones
+          .filter((z) => z.geoJson)
+          .map((z) => ({
+            geojson: projectToWGS84(JSON.parse(z.geoJson)),
+            isInside: z.isInside,
+            id: z.id,
+          }));
 
         results.value = response.data.zones.map((zone) => ({
           type: zone.type,
@@ -217,17 +231,18 @@ const handleSubmit = async () => {
       }
 
       if (response.data.species) {
-        speciesResults.value = response.data.species.map(s => {
+        speciesResults.value = response.data.species.map((s) => {
           // Identify the highest Red List status for scoring
           let maxScore = 0;
-          
-          s.statuses.forEach(st => {
+
+          s.statuses.forEach((st) => {
             const code = st.code.toUpperCase();
             if (code.includes("CR")) maxScore = Math.max(maxScore, 5);
             else if (code.includes("EN")) maxScore = Math.max(maxScore, 4);
             else if (code.includes("VU")) maxScore = Math.max(maxScore, 3);
             else if (code.includes("NT")) maxScore = Math.max(maxScore, 2);
-            else if (code.includes("LC") || code.includes("LR/LC")) maxScore = Math.max(maxScore, 1);
+            else if (code.includes("LC") || code.includes("LR/LC"))
+              maxScore = Math.max(maxScore, 1);
           });
 
           if (maxScore === 0 && s.isDeterminant) maxScore = 1.5;
@@ -236,9 +251,9 @@ const handleSubmit = async () => {
             scientificName: s.scientificName,
             vernacularName: s.vernacularName || "—",
             group: s.group1Inpn || s.group2Inpn || "Inconnu",
-            statusSummary: s.statuses.map(st => st.code).join(", ") || "—",
-            zonesLabel: s.zones.map(z => z.zoneName).join(", "),
-            endangermentScore: maxScore
+            statusSummary: s.statuses.map((st) => st.code).join(", ") || "—",
+            zonesLabel: s.zones.map((z) => z.zoneName).join(", "),
+            endangermentScore: maxScore,
           };
         });
       }
@@ -278,7 +293,11 @@ const onMapReady = (mapObject) => {
       <!-- Left Sidebar: Controls -->
       <div
         class="sidebar-container fill-height d-flex flex-column elevation-4"
-        :style="{ width: `${sidebarWidth}px`, minWidth: '200px', flexShrink: 0 }"
+        :style="{
+          width: `${sidebarWidth}px`,
+          minWidth: '200px',
+          flexShrink: 0,
+        }"
       >
         <div class="pa-4 bg-primary text-white flex-grow-0">
           <h2 class="text-h5 font-weight-bold">Chiro Diagnostics</h2>
@@ -404,48 +423,92 @@ const onMapReady = (mapObject) => {
                   v-for="zone in zonesGeoJson"
                   :key="zone.id"
                   :geojson="zone.geojson"
-                  :optionsStyle="() => ({
-                    color: zone.isInside ? '#FF9800' : '#4CAF50',
-                    weight: 2,
-                    dashArray: '5, 5',
-                    opacity: 0.8,
-                    fillColor: zone.isInside ? '#B3E5FC' : '#C8E6C9',
-                    fillOpacity: zone.isInside ? 0.6 : 0.5
-                  })"
+                  :optionsStyle="
+                    () => ({
+                      color: zone.isInside ? '#FF9800' : '#4CAF50',
+                      weight: 2,
+                      dashArray: '5, 5',
+                      opacity: 0.8,
+                      fillColor: zone.isInside ? '#B3E5FC' : '#C8E6C9',
+                      fillOpacity: zone.isInside ? 0.6 : 0.5,
+                    })
+                  "
                 ></l-geo-json>
 
                 <!-- Main study perimeter overlay -->
                 <l-geo-json
                   v-if="perimeterGeoJson"
                   :geojson="perimeterGeoJson"
-                  :optionsStyle="() => ({
-                    color: '#F44336',
-                    weight: 3,
-                    fillColor: '#FFE0B2',
-                    fillOpacity: 0.4
-                  })"
+                  :optionsStyle="
+                    () => ({
+                      color: '#F44336',
+                      weight: 3,
+                      fillColor: '#FFE0B2',
+                      fillOpacity: 0.4,
+                    })
+                  "
                 ></l-geo-json>
               </l-map>
             </div>
 
-            <!-- New Exterior Legend -->
+            <!-- Exterior Legend -->
             <div class="mt-4 pt-2 border-t">
-              <div class="text-caption font-weight-bold text-grey-darken-1 mb-2">LÉGENDE CARTOGRAPHIQUE</div>
+              <div
+                class="text-caption font-weight-bold text-grey-darken-1 mb-2"
+              >
+                LÉGENDE CARTOGRAPHIQUE
+              </div>
               <div class="d-flex flex-column gap-1">
                 <!-- Perimeter -->
-                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
-                  <div style="width: 14px; height: 14px; background-color: rgba(255, 224, 178, 0.4); border: 2px solid #f44336; margin-right: 12px;"></div>
-                  <span class="text-caption font-weight-medium">Périmètre d'Étude</span>
+                <div
+                  class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border"
+                >
+                  <div
+                    style="
+                      width: 14px;
+                      height: 14px;
+                      background-color: rgba(255, 224, 178, 0.4);
+                      border: 2px solid #f44336;
+                      margin-right: 12px;
+                    "
+                  ></div>
+                  <span class="text-caption font-weight-medium"
+                    >Périmètre d'Étude</span
+                  >
                 </div>
                 <!-- Inside -->
-                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
-                  <div style="width: 14px; height: 14px; background-color: rgba(179, 229, 252, 0.6); border: 2px dashed #ff9800; margin-right: 12px;"></div>
-                  <span class="text-caption font-weight-medium">Zones dans le périmètre</span>
+                <div
+                  class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border"
+                >
+                  <div
+                    style="
+                      width: 14px;
+                      height: 14px;
+                      background-color: rgba(179, 229, 252, 0.6);
+                      border: 2px dashed #ff9800;
+                      margin-right: 12px;
+                    "
+                  ></div>
+                  <span class="text-caption font-weight-medium"
+                    >Zones dans le périmètre</span
+                  >
                 </div>
                 <!-- Proximity -->
-                <div class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border">
-                  <div style="width: 14px; height: 14px; background-color: rgba(200, 230, 201, 0.5); border: 2px dashed #4caf50; margin-right: 12px;"></div>
-                  <span class="text-caption font-weight-medium">Zones à proximité ({{ searchRadius }} km)</span>
+                <div
+                  class="d-flex align-center bg-grey-lighten-4 pa-2 rounded border"
+                >
+                  <div
+                    style="
+                      width: 14px;
+                      height: 14px;
+                      background-color: rgba(200, 230, 201, 0.5);
+                      border: 2px dashed #4caf50;
+                      margin-right: 12px;
+                    "
+                  ></div>
+                  <span class="text-caption font-weight-medium"
+                    >Zones à proximité ({{ searchRadius }} km)</span
+                  >
                 </div>
               </div>
             </div>
@@ -453,34 +516,42 @@ const onMapReady = (mapObject) => {
         </div>
       </div>
 
-      <!-- Vertical Resizer -->
+      <!-- Drawer resizer -->
       <div
         class="resizer-vertical"
         @mousedown="startDragSidebar"
         title="Redimensionner le panneau"
       ></div>
 
-      <!-- Main Area: Results Tables (Full Height Constrained) -->
-      <div class="d-flex flex-column flex-grow-1" style="min-width: 0; height: 100vh; overflow: hidden">
+      <!-- Main Area: Results Tables -->
+      <div
+        class="d-flex flex-column flex-grow-1"
+        style="min-width: 0; height: 100vh; overflow: hidden"
+      >
         <!-- Output Data Table Area -->
-        <div
-          class="data-table-container flex-grow-1 d-flex flex-column"
-        >
+        <div class="data-table-container flex-grow-1 d-flex flex-column">
           <!-- Header Area: Fixed height tabs -->
           <div class="flex-shrink-0 bg-grey-lighten-4 border-b">
             <v-tabs v-model="activeTab" color="primary" density="compact">
-              <v-tab value="zones" prepend-icon="mdi-map-marker-radius">Zonages ({{ results.length }})</v-tab>
-              <v-tab value="species" prepend-icon="mdi-bug">Espèces ({{ speciesResults.length }})</v-tab>
+              <v-tab value="zones" prepend-icon="mdi-map-marker-radius"
+                >Zonages ({{ results.length }})</v-tab
+              >
+              <v-tab value="species" prepend-icon="mdi-bug"
+                >Espèces ({{ speciesResults.length }})</v-tab
+              >
             </v-tabs>
           </div>
 
-          <!-- Tab Content Area using direct Flexbox Containers instead of v-window for better scroll control -->
-          <div class="flex-grow-1 d-flex flex-column bg-white" style="min-height: 0">
+          <!-- Tab Content Area using direct Flexbox Containers -->
+          <div
+            class="flex-grow-1 d-flex flex-column bg-white"
+            style="min-height: 0"
+          >
             <!-- Tab 1: Zonages -->
-            <div 
+            <div
               v-if="activeTab === 'zones'"
               class="flex-grow-1 d-flex flex-column"
-              style="min-height: 0"
+              style="min-height: 0; overflow: hidden"
             >
               <v-data-table
                 id="zones-table"
@@ -491,8 +562,8 @@ const onMapReady = (mapObject) => {
                 loading-text="Analyse spatiale en cours..."
                 density="compact"
                 hover
-                height="100%"
                 fixed-header
+                height="900"
                 hide-default-footer
                 :items-per-page="-1"
                 :row-props="getRowProps"
@@ -506,7 +577,7 @@ const onMapReady = (mapObject) => {
             </div>
 
             <!-- Tab 2: Espèces -->
-            <div 
+            <div
               v-if="activeTab === 'species'"
               class="flex-grow-1 d-flex flex-column"
               style="min-height: 0"
@@ -532,7 +603,7 @@ const onMapReady = (mapObject) => {
                   :loading="loading"
                   density="compact"
                   hover
-                  height="100%"
+                  height="850"
                   fixed-header
                   hide-default-footer
                   :items-per-page="-1"
@@ -540,7 +611,13 @@ const onMapReady = (mapObject) => {
                 >
                   <template v-slot:item.endangermentScore="{ value }">
                     <v-chip
-                      :color="value >= 4 ? 'error' : value >= 3 ? 'warning' : 'primary'"
+                      :color="
+                        value >= 4
+                          ? 'error'
+                          : value >= 3
+                            ? 'warning'
+                            : 'primary'
+                      "
                       size="x-small"
                       variant="flat"
                     >
@@ -581,7 +658,8 @@ const onMapReady = (mapObject) => {
   transition: background-color 0.2s;
   z-index: 3;
 }
-.resizer-vertical:hover, .resizer-vertical:active {
+.resizer-vertical:hover,
+.resizer-vertical:active {
   background-color: rgba(var(--v-theme-primary), 0.3);
 }
 
