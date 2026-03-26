@@ -483,14 +483,14 @@ const onMapReady = (mapObject) => {
         <!-- Output Data Table Area -->
         <div
           class="data-table-container flex-grow-1 d-flex flex-column"
-          style="overflow-y: hidden"
+          style="min-height: 0; overflow: hidden;"
         >
           <v-tabs v-model="activeTab" color="primary" density="compact">
             <v-tab value="zones" prepend-icon="mdi-map-marker-radius">Zonages ({{ results.length }})</v-tab>
             <v-tab value="species" prepend-icon="mdi-bug">Espèces ({{ speciesResults.length }})</v-tab>
           </v-tabs>
 
-          <v-window v-model="activeTab" class="flex-grow-1 overflow-y-auto">
+          <v-window v-model="activeTab" class="flex-grow-1" style="min-height: 0;">
             <v-window-item value="zones" class="fill-height">
               <v-data-table
                 :headers="headers"
@@ -499,6 +499,8 @@ const onMapReady = (mapObject) => {
                 loading-text="Analyse spatiale en cours..."
                 density="compact"
                 hover
+                height="100%"
+                fixed-header
                 :row-props="getRowProps"
               >
                 <template v-slot:no-data>
@@ -528,6 +530,8 @@ const onMapReady = (mapObject) => {
                   :loading="loading"
                   density="compact"
                   hover
+                  height="100%"
+                  fixed-header
                   :sort-by="[{ key: 'endangermentScore', order: 'desc' }]"
                   class="flex-grow-1"
                 >
