@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick } from "vue";
-import { LMap, LTileLayer, LGeoJson } from "@vue-leaflet/vue-leaflet";
+import { LMap, LTileLayer, LGeoJson, LControl } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 import proj4 from "proj4";
 import { sendMessageToBackend } from "../services/photinoService";
@@ -318,11 +318,12 @@ const onMapReady = (mapObject) => {
               :key="zone.id"
               :geojson="zone.geojson"
               :optionsStyle="() => ({
-                color: zone.isInside ? '#FF5722' : '#2196F3',
+                color: zone.isInside ? '#FF9800' : '#4CAF50',
                 weight: 2,
+                dashArray: '5, 5',
                 opacity: 0.8,
-                fillColor: zone.isInside ? '#FFCCBC' : '#BBDEFB',
-                fillOpacity: zone.isInside ? 0.6 : 0.2
+                fillColor: zone.isInside ? '#B3E5FC' : '#C8E6C9',
+                fillOpacity: zone.isInside ? 0.6 : 0.5
               })"
             ></l-geo-json>
 
@@ -331,12 +332,37 @@ const onMapReady = (mapObject) => {
               v-if="perimeterGeoJson"
               :geojson="perimeterGeoJson"
               :optionsStyle="() => ({
-                color: '#D32F2F',
+                color: '#F44336',
                 weight: 3,
-                dashArray: '5, 10',
-                fillOpacity: 0
+                fillColor: '#FFE0B2',
+                fillOpacity: 0.4
               })"
             ></l-geo-json>
+
+            <!-- Map Legend -->
+            <l-control position="bottomleft">
+              <v-card class="pa-3 elevation-3 rounded-lg" border="primary md" style="min-width: 220px; background-color: rgba(255, 255, 255, 0.95);">
+                <div class="font-weight-bold mb-3 text-subtitle-2 text-primary d-flex align-center">
+                  <v-icon size="small" start>mdi-map-legend</v-icon>
+                  Légende
+                </div>
+                <!-- Perimeter -->
+                <div class="d-flex align-center mb-2">
+                  <div style="width: 16px; height: 16px; background-color: rgba(255, 224, 178, 0.4); border: 2px solid #F44336; margin-right: 14px; margin-left: 2px;"></div>
+                  <span class="text-caption">Périmètre d'Étude</span>
+                </div>
+                <!-- Inside zones -->
+                <div class="d-flex align-center mb-2">
+                  <div style="width: 16px; height: 16px; background-color: rgba(179, 229, 252, 0.6); border: 2px dashed #FF9800; margin-right: 14px; margin-left: 2px;"></div>
+                  <span class="text-caption">Dans le périmètre</span>
+                </div>
+                <!-- Outside zones -->
+                <div class="d-flex align-center">
+                  <div style="width: 16px; height: 16px; background-color: rgba(200, 230, 201, 0.5); border: 2px dashed #4CAF50; margin-right: 14px; margin-left: 2px;"></div>
+                  <span class="text-caption">À proximité ({{ searchRadius }} km)</span>
+                </div>
+              </v-card>
+            </l-control>
           </l-map>
         </div>
 
