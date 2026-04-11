@@ -4,6 +4,7 @@ import { LMap, LTileLayer, LGeoJson, LControl } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 import proj4 from "proj4";
 import { sendMessageToBackend } from "../services/photinoService";
+import { calculateEndangermentScore } from "../utils/ecology";
 
 // Register EPSG:2154 (Lambert 93) definition for projection
 proj4.defs(
@@ -232,20 +233,7 @@ const handleSubmit = async () => {
 
       if (response.data.species) {
         speciesResults.value = response.data.species.map((s) => {
-          // Identify the highest Red List status for scoring
-          let maxScore = 0;
-
-          s.statuses.forEach((st) => {
-            const code = st.code.toUpperCase();
-            if (code.includes("CR")) maxScore = Math.max(maxScore, 5);
-            else if (code.includes("EN")) maxScore = Math.max(maxScore, 4);
-            else if (code.includes("VU")) maxScore = Math.max(maxScore, 3);
-            else if (code.includes("NT")) maxScore = Math.max(maxScore, 2);
-            else if (code.includes("LC") || code.includes("LR/LC"))
-              maxScore = Math.max(maxScore, 1);
-          });
-
-          if (maxScore === 0 && s.isDeterminant) maxScore = 1.5;
+          const maxScore = calculateEndangermentScore(s.statuses, s.isDeterminant);
 
           return {
             scientificName: s.scientificName,
