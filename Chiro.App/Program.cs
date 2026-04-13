@@ -24,9 +24,13 @@ class Program
     static void Main(string[] args)
     {
         // 1. Load Configuration
+        var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
         var builder = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: true)
+            .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true) // Standard local override
+            .AddEnvironmentVariables();
 
         var configuration = builder.Build();
 
