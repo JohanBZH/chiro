@@ -3,25 +3,41 @@
 # ──────────────────────────────────────
 .env
 .env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # ──────────────────────────────────────
-# .NET (Chiro.App)
+# .NET (Chiro.App & Chiro.Tests)
 # ──────────────────────────────────────
-bin/
-obj/
-*.user
-*.suo
+[Bb]in/
+[Oo]bj/
+TestResults/
+nupkg/
 *.db
 *.db-wal
 *.db-shm
-*.DotSettings.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+appsettings.Local.json
+appsettings.Development.json
 
 # ──────────────────────────────────────
 # Node.js (Chiro.Client)
 # ──────────────────────────────────────
 node_modules/
 dist/
+dist-ssr/
 .vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.stylelintcache
 
 # ──────────────────────────────────────
 # IDE & Editor
@@ -32,6 +48,7 @@ dist/
 *.swp
 *.swo
 *~
+.vsconfig
 
 # ──────────────────────────────────────
 # OS files
@@ -41,18 +58,35 @@ Thumbs.db
 desktop.ini
 
 # ──────────────────────────────────────
-# Local datasets (too large for git, ~2GB+)
+# GIS & Spatial Data (Exhaustive)
 # ──────────────────────────────────────
+# Any spatial data outside of tracked code
+Inputs/
 database/
+*.shp
+*.dbf
+*.shx
+*.prj
+*.qpj
+*.qml
+*.qmd
+*.cpg
+*.gpkg
+*.qgs
+*.qgz
 
 # ──────────────────────────────────────
 # Input documents (project-specific, not code)
 # ──────────────────────────────────────
-Inputs/
 *.xlsx
+*.xlsx#
 *.docx
+*.docx#
+*.pdf
+*.zip
+*.7z
 
 # ──────────────────────────────────────
-# Gemini / Agent artefacts
+# Agent artefacts
 # ──────────────────────────────────────
 .gemini/
