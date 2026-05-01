@@ -81,6 +81,7 @@ const speciesHeaders = ref([
 ]);
 const loading = ref(false);
 const picking = ref(false);
+const exporting = ref(false);
 const errorMessage = ref(null);
 
 // Map Setup
@@ -272,6 +273,33 @@ const onMapReady = (mapObject) => {
   setTimeout(() => {
     mapObject.invalidateSize();
   }, 100);
+};
+
+// Export all displayed tables to an Excel file via the backend.
+// All speciesResults are exported regardless of the current search filter.
+const exportExcel = async () => {
+  exporting.value = true;
+  errorMessage.value = null;
+
+  try {
+    const payload = {
+      // results contains the formatted zones array displayed in the Zonages tab
+      zones: results.value,
+      // speciesResults is the full unfiltered list; search filter is client-side only
+      species: speciesResults.value,
+    };
+
+    const response = await sendMessageToBackend("exportExcel", payload, 30000);
+
+    if (response.status !== "success" && response.status !== "cancelled") {
+      errorMessage.value = response.message || "Erreur lors de l'export Excel.";
+    }
+  } catch (error) {
+    console.error("Error exporting Excel:", error);
+    errorMessage.value = "Erreur lors de l'export Excel.";
+  } finally {
+    exporting.value = false;
+  }
 };
 </script>
 
@@ -518,9 +546,9 @@ const onMapReady = (mapObject) => {
       >
         <!-- Output Data Table Area -->
         <div class="data-table-container flex-grow-1 d-flex flex-column">
-          <!-- Header Area: Fixed height tabs -->
-          <div class="flex-shrink-0 bg-grey-lighten-4 border-b">
-            <v-tabs v-model="activeTab" color="primary" density="compact">
+          <!-- Header Area: Fixed height tabs + export button -->
+          <div class="flex-shrink-0 bg-grey-lighten-4 border-b d-flex align-center">
+            <v-tabs v-model="activeTab" color="primary" density="compact" class="flex-grow-1">
               <v-tab value="zones" prepend-icon="mdi-map-marker-radius"
                 >Zonages ({{ results.length }})</v-tab
               >
@@ -528,6 +556,21 @@ const onMapReady = (mapObject) => {
                 >Espèces ({{ speciesResults.length }})</v-tab
               >
             </v-tabs>
+
+            <!-- Export button, visible only when there is data to export -->
+            <v-btn
+              v-if="results.length > 0 || speciesResults.length > 0"
+              color="success"
+              variant="tonal"
+              density="compact"
+              prepend-icon="mdi-file-excel"
+              :loading="exporting"
+              :disabled="exporting"
+              class="mr-3 flex-shrink-0"
+              @click="exportExcel"
+            >
+              Exporter Excel
+            </v-btn>
           </div>
 
           <!-- Tab Content Area using direct Flexbox Containers -->
