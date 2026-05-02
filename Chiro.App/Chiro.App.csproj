@@ -23,4 +23,19 @@
     <PackageReference Include="Photino.NET" Version="4.0.16" />
   </ItemGroup>
 
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild">
+    <Exec Command="npm install" WorkingDirectory="..\Chiro.Client" />
+    <Exec Command="npm run build" WorkingDirectory="..\Chiro.Client" />
+  </Target>
+
+  <Target Name="AddFrontendFilesToContent" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildFrontend">
+    <ItemGroup>
+      <FrontendFiles Include="..\Chiro.Client\dist\**\*.*" />
+      <Content Include="@(FrontendFiles)">
+        <TargetPath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
+
 </Project>

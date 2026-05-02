@@ -28,7 +28,7 @@ class Program
         // 1. Load Configuration
         var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
         var builder = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
+            .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: true)
             .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true) // Standard local override
@@ -129,8 +129,8 @@ class Program
                     SafeSendWebMessage(targetWindow, new { status = "error", message = ex.Message, requestId }, options);
                 }
             })
-            // Target Vite Dev Server for quick iteration
-            .Load("http://localhost:5173");
+            // Load compiled Vue app via the local embedded server to avoid file:// CORS issues
+            .Load("http://127.0.0.1:5174/");
 
         // 4. Start Local API background listener for Vue to poll results
         StartLocalApi();
@@ -201,7 +201,32 @@ class Program
                     }
                     else
                     {
-                        ctx.Response.StatusCode = 404;
+                        var requestPath = ctx.Request.Url?.AbsolutePath;
+                        if (string.IsNullOrEmpty(requestPath) || requestPath == "/")
+                        {
+                            requestPath = "/index.html";
+                        }
+                        
+                        var filePath = Path.Combine(AppContext.BaseDirectory, "wwwroot", requestPath.TrimStart('/'));
+                        if (File.Exists(filePath))
+                        {
+                            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+                            string mime = ext switch {
+                                ".html" => "text/html",
+                                ".js" => "application/javascript",
+                                ".css" => "text/css",
+                                ".svg" => "image/svg+xml",
+                                ".png" => "image/png",
+                                _ => "application/octet-stream"
+                            };
+                            ctx.Response.ContentType = mime;
+                            var fileBytes = File.ReadAllBytes(filePath);
+                            ctx.Response.OutputStream.Write(fileBytes, 0, fileBytes.Length);
+                        }
+                        else
+                        {
+                            ctx.Response.StatusCode = 404;
+                        }
                     }
                 }
                 catch (Exception ex)
