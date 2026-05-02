@@ -4,6 +4,7 @@ import { LMap, LTileLayer, LGeoJson, LControl } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 import proj4 from "proj4";
 import { sendMessageToBackend } from "../services/photinoService";
+import { calculateEndangermentScore } from "../utils/ecology";
 
 // Register EPSG:2154 (Lambert 93) definition for projection
 proj4.defs(
@@ -80,6 +81,7 @@ const speciesHeaders = ref([
 ]);
 const loading = ref(false);
 const picking = ref(false);
+const exporting = ref(false);
 const errorMessage = ref(null);
 
 // Map Setup
@@ -232,20 +234,7 @@ const handleSubmit = async () => {
 
       if (response.data.species) {
         speciesResults.value = response.data.species.map((s) => {
-          // Identify the highest Red List status for scoring
-          let maxScore = 0;
-
-          s.statuses.forEach((st) => {
-            const code = st.code.toUpperCase();
-            if (code.includes("CR")) maxScore = Math.max(maxScore, 5);
-            else if (code.includes("EN")) maxScore = Math.max(maxScore, 4);
-            else if (code.includes("VU")) maxScore = Math.max(maxScore, 3);
-            else if (code.includes("NT")) maxScore = Math.max(maxScore, 2);
-            else if (code.includes("LC") || code.includes("LR/LC"))
-              maxScore = Math.max(maxScore, 1);
-          });
-
-          if (maxScore === 0 && s.isDeterminant) maxScore = 1.5;
+          const maxScore = calculateEndangermentScore(s.statuses, s.isDeterminant);
 
           return {
             scientificName: s.scientificName,
@@ -284,6 +273,33 @@ const onMapReady = (mapObject) => {
   setTimeout(() => {
     mapObject.invalidateSize();
   }, 100);
+};
+
+// Export all displayed tables to an Excel file via the backend.
+// All speciesResults are exported regardless of the current search filter.
+const exportExcel = async () => {
+  exporting.value = true;
+  errorMessage.value = null;
+
+  try {
+    const payload = {
+      // results contains the formatted zones array displayed in the Zonages tab
+      zones: results.value,
+      // speciesResults is the full unfiltered list; search filter is client-side only
+      species: speciesResults.value,
+    };
+
+    const response = await sendMessageToBackend("exportExcel", payload, 30000);
+
+    if (response.status !== "success" && response.status !== "cancelled") {
+      errorMessage.value = response.message || "Erreur lors de l'export Excel.";
+    }
+  } catch (error) {
+    console.error("Error exporting Excel:", error);
+    errorMessage.value = "Erreur lors de l'export Excel.";
+  } finally {
+    exporting.value = false;
+  }
 };
 </script>
 
@@ -530,9 +546,9 @@ const onMapReady = (mapObject) => {
       >
         <!-- Output Data Table Area -->
         <div class="data-table-container flex-grow-1 d-flex flex-column">
-          <!-- Header Area: Fixed height tabs -->
-          <div class="flex-shrink-0 bg-grey-lighten-4 border-b">
-            <v-tabs v-model="activeTab" color="primary" density="compact">
+          <!-- Header Area: Fixed height tabs + export button -->
+          <div class="flex-shrink-0 bg-grey-lighten-4 border-b d-flex align-center">
+            <v-tabs v-model="activeTab" color="primary" density="compact" class="flex-grow-1">
               <v-tab value="zones" prepend-icon="mdi-map-marker-radius"
                 >Zonages ({{ results.length }})</v-tab
               >
@@ -540,6 +556,21 @@ const onMapReady = (mapObject) => {
                 >Espèces ({{ speciesResults.length }})</v-tab
               >
             </v-tabs>
+
+            <!-- Export button, visible only when there is data to export -->
+            <v-btn
+              v-if="results.length > 0 || speciesResults.length > 0"
+              color="success"
+              variant="tonal"
+              density="compact"
+              prepend-icon="mdi-file-excel"
+              :loading="exporting"
+              :disabled="exporting"
+              class="mr-3 flex-shrink-0"
+              @click="exportExcel"
+            >
+              Exporter Excel
+            </v-btn>
           </div>
 
           <!-- Tab Content Area using direct Flexbox Containers -->

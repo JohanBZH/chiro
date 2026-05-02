@@ -12,6 +12,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.1" />
+    <PackageReference Include="MiniExcel" Version="1.43.1" />
     <PackageReference Include="NetTopologySuite" Version="2.5.0" />
     <PackageReference Include="NetTopologySuite.IO.GeoJSON" Version="4.0.0" />
     <PackageReference Include="NetTopologySuite.IO.GeoPackage" Version="2.0.0" />
@@ -20,5 +22,20 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="9.0.3" />
     <PackageReference Include="Photino.NET" Version="4.0.16" />
   </ItemGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild">
+    <Exec Command="npm install" WorkingDirectory="..\Chiro.Client" />
+    <Exec Command="npm run build" WorkingDirectory="..\Chiro.Client" />
+  </Target>
+
+  <Target Name="AddFrontendFilesToContent" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildFrontend">
+    <ItemGroup>
+      <FrontendFiles Include="..\Chiro.Client\dist\**\*.*" />
+      <Content Include="@(FrontendFiles)">
+        <TargetPath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
 
 </Project>

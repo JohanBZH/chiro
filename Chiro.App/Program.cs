@@ -3,11 +3,13 @@ using Chiro.App.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using MiniExcelLibs;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using Photino.NET;
 using System.Text.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Collections.Concurrent;
@@ -24,9 +26,13 @@ class Program
     static void Main(string[] args)
     {
         // 1. Load Configuration
+        var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
         var builder = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: true)
+            .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true) // Standard local override
+            .AddEnvironmentVariables();
 
         var configuration = builder.Build();
 
@@ -107,6 +113,10 @@ class Program
                             HandleGetStats(db, targetWindow, options, requestId);
                             break;
 
+                        case "exportExcel":
+                            HandleExportExcel(doc.RootElement, targetWindow, options, requestId);
+                            break;
+
                         default:
                             SafeSendWebMessage(targetWindow, new { status = "error", message = $"Unknown action: {action}", requestId }, options);
                             break;
@@ -119,8 +129,8 @@ class Program
                     SafeSendWebMessage(targetWindow, new { status = "error", message = ex.Message, requestId }, options);
                 }
             })
-            // Target Vite Dev Server for quick iteration
-            .Load("http://localhost:5173");
+            // Load compiled Vue app via the local embedded server to avoid file:// CORS issues
+            .Load("http://127.0.0.1:5174/");
 
         // 4. Start Local API background listener for Vue to poll results
         StartLocalApi();
@@ -191,7 +201,32 @@ class Program
                     }
                     else
                     {
-                        ctx.Response.StatusCode = 404;
+                        var requestPath = ctx.Request.Url?.AbsolutePath;
+                        if (string.IsNullOrEmpty(requestPath) || requestPath == "/")
+                        {
+                            requestPath = "/index.html";
+                        }
+                        
+                        var filePath = Path.Combine(AppContext.BaseDirectory, "wwwroot", requestPath.TrimStart('/'));
+                        if (File.Exists(filePath))
+                        {
+                            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+                            string mime = ext switch {
+                                ".html" => "text/html",
+                                ".js" => "application/javascript",
+                                ".css" => "text/css",
+                                ".svg" => "image/svg+xml",
+                                ".png" => "image/png",
+                                _ => "application/octet-stream"
+                            };
+                            ctx.Response.ContentType = mime;
+                            var fileBytes = File.ReadAllBytes(filePath);
+                            ctx.Response.OutputStream.Write(fileBytes, 0, fileBytes.Length);
+                        }
+                        else
+                        {
+                            ctx.Response.StatusCode = 404;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -465,6 +500,94 @@ class Program
         };
 
         SafeSendWebMessage(window, new { status = "success", action = "getStats", data = stats, requestId }, options);
+    }
+
+    /// <summary>
+    /// Safely reads a JsonElement as a string regardless of its ValueKind.
+    /// Avoids the InvalidOperationException thrown by GetString() on non-String elements.
+    /// </summary>
+    private static string GetStringValue(JsonElement el) => el.ValueKind switch
+    {
+        JsonValueKind.String => el.GetString() ?? "",
+        JsonValueKind.Null or JsonValueKind.Undefined => "",
+        // Numbers, booleans, etc. — convert to their raw JSON text representation
+        _ => el.ToString()
+    };
+
+    /// <summary>
+    /// Handles "exportExcel": receives tabular data from the frontend,
+    /// opens a native Save dialog, then writes a two-sheet .xlsx file.
+    /// Expected payload: { action: "exportExcel", data: { zones: [...], species: [...] } }
+    ///
+    /// Reads directly from the already-parsed JsonElement to avoid reflection
+    /// issues with private nested types in System.Text.Json deserialization.
+    /// </summary>
+    private static void HandleExportExcel(
+        JsonElement root, PhotinoWindow? window, JsonSerializerOptions options, string? requestId)
+    {
+        if (window == null) return;
+
+        var data = root.GetProperty("data");
+
+        // Build zone rows directly from JsonElement — keys match the camelCase Vue payload.
+        // Dictionary keys become Excel column headers in MiniExcel.
+        var zonesExport = new List<Dictionary<string, object>>();
+        foreach (var item in data.GetProperty("zones").EnumerateArray())
+        {
+            zonesExport.Add(new Dictionary<string, object>
+            {
+                ["Type de Zone"]      = GetStringValue(item.GetProperty("type")),
+                ["Code ZNIEFF/N2000"] = GetStringValue(item.GetProperty("code")),
+                ["Nom"]               = GetStringValue(item.GetProperty("name")),
+                ["Distance (km)"]     = GetStringValue(item.GetProperty("distance")),
+                ["Orientation"]       = GetStringValue(item.GetProperty("orientation")),
+            });
+        }
+
+        // Build species rows directly from JsonElement.
+        // endangermentScore is a genuine number and is kept as double for Excel.
+        var speciesExport = new List<Dictionary<string, object>>();
+        foreach (var item in data.GetProperty("species").EnumerateArray())
+        {
+            speciesExport.Add(new Dictionary<string, object>
+            {
+                ["Nom Scientifique"] = GetStringValue(item.GetProperty("scientificName")),
+                ["Nom Vernaculaire"] = GetStringValue(item.GetProperty("vernacularName")),
+                ["Groupe"]           = GetStringValue(item.GetProperty("group")),
+                ["Statuts"]          = GetStringValue(item.GetProperty("statusSummary")),
+                ["Zones"]            = GetStringValue(item.GetProperty("zonesLabel")),
+                ["Score Enjeu"]      = item.GetProperty("endangermentScore").GetDouble(),
+            });
+        }
+
+        // Open the native OS save dialog
+        var savePath = window.ShowSaveFile(
+            title: "Exporter vers Excel",
+            defaultPath: "export_chiro.xlsx",
+            filters: new (string Name, string[] Extensions)[] { ("Fichiers Excel", new[] { "xlsx" }) });
+
+        if (string.IsNullOrEmpty(savePath))
+        {
+            // User cancelled the dialog — not an error
+            SafeSendWebMessage(window, new { status = "cancelled", action = "exportExcel", requestId }, options);
+            return;
+        }
+
+        // Guarantee the .xlsx extension
+        if (!savePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            savePath += ".xlsx";
+
+        // Build two-sheet workbook and write it
+        var sheets = new Dictionary<string, object>
+        {
+            ["Zonages"] = zonesExport,
+            ["Espèces"] = speciesExport
+        };
+
+        MiniExcel.SaveAs(savePath, sheets, overwriteFile: true, excelType: ExcelType.XLSX);
+        Console.WriteLine($"[ExportExcel] Saved to: {savePath}");
+
+        SafeSendWebMessage(window, new { status = "success", action = "exportExcel", requestId }, options);
     }
 }
 
